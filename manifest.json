@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "DataUse - Smart Web Scraper",
+  "version": "1.0",
+  "action": { "default_popup": "popup.html" },
+  "permissions": ["activeTab", "scripting"]
+}
