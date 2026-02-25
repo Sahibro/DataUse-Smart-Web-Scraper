@@ -1,4 +1,4 @@
-document.getElementById('btn').addEventListener('click', async () => {
+document.getElementById('btn').addEventListener('click', async () => { // <--- Ye zaroori hai
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     chrome.scripting.executeScript({
