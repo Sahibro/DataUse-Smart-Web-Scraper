@@ -17,7 +17,7 @@ document.getElementById('btn').addEventListener('click', async () => {
                 leads.push({
                     name: name.replace(/,/g, ""), 
                     rating: rating,
-                    info: infoLines.replace(/,/g, " | ")
+                    info: infoLines.join(" | ").replace(/,/g, " ")
                 });
             });
 
