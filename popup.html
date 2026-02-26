@@ -1,5 +1,41 @@
-<body style="width: 200px; padding: 10px; background: #0f172a; color: white;">
-  <h3>DataUse 📊</h3>
-  <button id="btn" style="width: 100%; padding: 10px; background: #0284c7; color: white; border: none; border-radius: 5px; cursor: pointer;">Extract to CSV</button>
-  <script src="popup.js"></script>
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            width: 300px;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        #btn {
+            width: 100%;
+            padding: 12px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        #btn:hover {
+            background: #45a049;
+        }
+        #status {
+            margin-top: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h2>📍 Google Maps Scraper</h2>
+    <button id="btn">🚀 Extract & Download</button>
+    <div id="status"></div>
+    <script src="popup.js"></script>
 </body>
+</html>
