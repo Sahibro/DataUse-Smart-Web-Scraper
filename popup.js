@@ -146,7 +146,7 @@ document.getElementById('btn').addEventListener('click', async () => {
         // ============================================
         // 7. CSV Content बनाएं
         // ============================================
-        let csvContent = "data:text/csv;charset=utf-8,Business Name,Rating,Phone Number,Website\n";
+        let csvContent = "Business Name,Rating,Phone Number,Website\n";
 
         leads.forEach((lead) => {
             const row = [
@@ -160,26 +160,37 @@ document.getElementById('btn').addEventListener('click', async () => {
         });
 
         // ============================================
-        // 8. CSV फ़ाइल download करें
+        // 8. Blob का उपयोग करके CSV download करें ✅ FIXED
         // ============================================
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        
-        const fileName = `Google_Maps_Leads_${new Date().getTime()}.csv`;
-        link.setAttribute("download", fileName);
-        
-        document.body.appendChild(link);
-        link.click();
-        
-        // Clean up
-        document.body.removeChild(link);
+        try {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute("href", url);
+            
+            const fileName = `Google_Maps_Leads_${new Date().getTime()}.csv`;
+            link.setAttribute("download", fileName);
+            
+            document.body.appendChild(link);
+            link.click();
+            
+            // Clean up
+            setTimeout(() => {
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }, 100);
 
-        // ============================================
-        // 9. Success message दिखाएं
-        // ============================================
-        alert(`✅ SUCCESS!\n\n${leads.length} बिज़नेस ���ीड्स डाउनलोड हो गई हैं।\n\nFile: ${fileName}`);
-        
-        console.log("📊 Extracted Leads:", leads);
+            // ============================================
+            // 9. Success message दिखाएं
+            // ============================================
+            alert(`✅ SUCCESS!\n\n${leads.length} बिज़नेस लीड्स डाउनलोड हो गई हैं।\n\nFile: ${fileName}`);
+            
+            console.log("📊 Extracted Leads:", leads);
+
+        } catch (error) {
+            alert(`❌ Download Error: ${error.message}`);
+            console.error("Download Error:", error);
+        }
     });
 });
