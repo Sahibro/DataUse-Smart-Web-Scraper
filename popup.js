@@ -144,7 +144,7 @@ document.getElementById('btn').addEventListener('click', async () => {
         };
 
         // ============================================
-        // 7. CSV Content बनाएं
+        // 7. CSV Content बनाएं (UTF-8 BOM के साथ)
         // ============================================
         let csvContent = "Business Name,Rating,Phone Number,Website\n";
 
@@ -160,26 +160,35 @@ document.getElementById('btn').addEventListener('click', async () => {
         });
 
         // ============================================
-        // 8. Blob का उपयोग करके CSV download करें ✅ FIXED
+        // 8. Download Function (Popup में run होगा) ✅ FIXED
         // ============================================
         try {
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
+            // UTF-8 BOM add करो (Hindi support के लिए)
+            const BOM = "\uFEFF";
+            const csvWithBOM = BOM + csvContent;
+            
+            // Blob बनाओ
+            const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             
-            link.setAttribute("href", url);
+            // Download link बनाओ
+            const link = document.createElement('a');
+            link.href = url;
             
             const fileName = `Google_Maps_Leads_${new Date().getTime()}.csv`;
-            link.setAttribute("download", fileName);
+            link.download = fileName;
             
+            // DOM में add करो
             document.body.appendChild(link);
+            
+            // Click करो (Download हो जाएगा)
             link.click();
             
-            // Clean up
+            // Cleanup - 500ms बाद
             setTimeout(() => {
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
-            }, 100);
+            }, 500);
 
             // ============================================
             // 9. Success message दिखाएं
