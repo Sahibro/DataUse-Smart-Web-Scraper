@@ -1,11 +1,19 @@
 {
   "manifest_version": 3,
+  "name": "Google Maps Lead Scraper",
+  "version": "1.0",
+  "description": "Extract business leads from Google Maps",
   "permissions": [
     "scripting",
     "tabs",
     "downloads"
   ],
   "host_permissions": [
-    "<all_urls>"
-  ]
+    "*://maps.google.com/*",
+    "*://www.google.com/maps/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Google Maps Lead Scraper"
+  }
 }
