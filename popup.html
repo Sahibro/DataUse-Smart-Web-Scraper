@@ -1,41 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <style>
-        body {
-            width: 300px;
-            padding: 20px;
-            font-family: Arial, sans-serif;
-            background: #f0f0f0;
-        }
-        #btn {
-            width: 100%;
-            padding: 12px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-        }
-        #btn:hover {
-            background: #45a049;
-        }
-        #status {
-            margin-top: 15px;
-            padding: 10px;
-            background: white;
-            border-radius: 5px;
-            text-align: center;
-            display: none;
-        }
-    </style>
+  <style>
+    body { width: 300px; font-family: sans-serif; padding: 10px; }
+    .btn { background: #4285f4; color: white; border: none; padding: 10px; width: 100%; cursor: pointer; border-radius: 4px; }
+    #status { margin-top: 10px; font-size: 12px; color: #555; }
+  </style>
 </head>
 <body>
-    <h2>📍 Google Maps Scraper</h2>
-    <button id="btn">🚀 Extract & Download</button>
-    <div id="status"></div>
-    <script src="popup.js"></script>
+  <h3>G-Maps Lead Scraper</h3>
+  <button id="startScrape" class="btn">Extract Leads</button>
+  <div id="status">Ready to scrape...</div>
+  <script src="popup.js"></script>
 </body>
 </html>
