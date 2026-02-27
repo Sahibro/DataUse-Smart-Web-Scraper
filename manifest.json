@@ -1,24 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "DataUse Pro - Google Maps Lead Scraper",
-  "version": "2.1",
-  "description": "Professional tool to extract business leads from Google Maps.",
+  "name": "DataUse Smart Web Scraper",
+  "version": "1.0",
+  "description": "Extract Business Leads from Google Maps easily.",
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
-  ],
-  "host_permissions": [
-    "*://://www.google.com*"
+    "downloads"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Open Scraper"
+    "default_popup": "popup.html"
   },
-  "content_scripts": [
-    {
-      "matches": ["*://://www.google.com*"],
-      "js": ["content.js"]
-    }
+  "host_permissions": [
+    "https://www.google.com*"
   ]
 }
