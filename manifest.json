@@ -1,8 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "DataUse Smart Web Scraper",
-  "version": "1.0",
-  "description": "Extract Business Leads from Google Maps easily.",
+  "name": "DataUse Smart Scraper PRO",
+  "version": "2.0",
   "permissions": [
     "activeTab",
     "scripting",
@@ -12,6 +11,7 @@
     "default_popup": "popup.html"
   },
   "host_permissions": [
-    "https://www.google.com*"
+    "*://*://*",
+    "*://*.google.co.in/maps/*"
   ]
 }
