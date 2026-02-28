@@ -1,6 +1,5 @@
-let scrapingInterval;
+let scraping = false;
 
-// Data persistence check
 chrome.storage.local.get(['leads'], (res) => {
     if (res.leads) {
         document.getElementById('count').innerText = res.leads.length;
@@ -10,93 +9,84 @@ chrome.storage.local.get(['leads'], (res) => {
 
 document.getElementById('startBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    // UI Updates
-    document.getElementById('startBtn').style.display = 'none';
-    document.getElementById('stopBtn').style.display = 'block';
-    document.getElementById('status').innerText = "Running...";
-
-    chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: scrapeGoogleMapsLeads
-    });
+    if (!tab.url.includes("google.com/maps")) {
+        alert("Pehle Google Maps par kuch search karein!");
+        return;
+    }
+    document.getElementById('startBtn').innerText = "RUNNING...";
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: startMapsScraping });
 });
 
 document.getElementById('stopBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => { window.stopExtraction = true; }
-    });
-
-    document.getElementById('startBtn').style.display = 'block';
-    document.getElementById('stopBtn').style.display = 'none';
-    document.getElementById('status').innerText = "Stopped";
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { window.stopScraping = true; } });
+    document.getElementById('startBtn').innerText = "START SCRAPING";
 });
 
-function scrapeGoogleMapsLeads() {
-    window.stopExtraction = false;
+// --- YE FUNCTION GOOGLE MAPS KE PAGE PAR CHALTA HAI ---
+function startMapsScraping() {
+    window.stopScraping = false;
     let leads = [];
 
-    // Google Maps uses a specific feed container for results
     const scrollContainer = document.querySelector('div[role="feed"]') || window;
 
-    const scraper = setInterval(() => {
-        if (window.stopExtraction) {
-            clearInterval(scraper);
+    const interval = setInterval(() => {
+        if (window.stopScraping) {
+            clearInterval(interval);
             return;
         }
 
-        // 1. Better Scroll Logic
-        scrollContainer.scrollBy(0, 800);
+        scrollContainer.scrollBy(0, 700);
 
-        // 2. Data Extraction with accurate selectors
-        // Nv2Ybe, lI97zE are current card classes
-        const cards = document.querySelectorAll('.Nv2Ybe, .lI97zE, .Ua6G7e');
+        // Sabhi result cards ko dhoondhna (Google Maps uses role="article" or specific links)
+        const cards = document.querySelectorAll('div[role="article"], a[href*="/maps/place/"]');
 
         cards.forEach(card => {
-            const nameEl = card.querySelector('.fontHeadlineSmall');
-            if (nameEl) {
-                const name = nameEl.innerText.trim();
+            // Agar card 'a' tag hai toh uska parent container lo, varna card khud container hai
+            const container = card.tagName === 'A' ? card.closest('div[role="article"]') : card;
+            if (!container) return;
+
+            // 1. NAME (Har card mein 'fontHeadlineSmall' class abhi standard hai)
+            const nameEl = container.querySelector('.fontHeadlineSmall');
+            const name = nameEl ? nameEl.innerText : "";
+
+            if (name && !leads.find(l => l.name === name)) {
                 
-                // Prevent duplicate entries
-                if (!leads.find(l => l.name === name)) {
-                    
-                    // PHONE: Looking for specific phone patterns in text
-                    const phoneRegex = /(\+?\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}/g;
-                    const phoneMatch = card.innerText.match(phoneRegex);
+                // 2. RATING (Aria-label se nikalna sabse satik hai)
+                const ratingEl = container.querySelector('span[aria-label*="stars"]');
+                const rating = ratingEl ? ratingEl.getAttribute('aria-label').split(' ')[0] : "N/A";
 
-                    // RATING: Google uses aria-labels for stars
-                    const ratingEl = card.querySelector('span[aria-label*="stars"]');
-                    const rating = ratingEl ? ratingEl.getAttribute('aria-label').split(' ')[0] : "N/A";
+                // 3. WEBSITE (Aria-label="Website" wale link ko dhoondho)
+                const webEl = container.querySelector('a[aria-label*="Website"], a[aria-label*="website"]');
+                const website = webEl ? webEl.href : "N/A";
 
-                    // REVIEWS:
-                    const reviewsEl = card.querySelector('span[aria-label*="reviews"]');
-                    const reviews = reviewsEl ? reviewsEl.getAttribute('aria-label').replace(/\D/g, "") : "0";
-
-                    // WEBSITE:
-                    const webEl = card.querySelector('a[aria-label*="website"]');
-                    const website = webEl ? webEl.href : "N/A";
-
-                    leads.push({
-                        name: name.replace(/,/g, ""), // Remove commas for CSV
-                        phone: phoneMatch ? phoneMatch[0] : "N/A",
-                        website: website,
-                        rating: rating,
-                        reviews: reviews
-                    });
+                // 4. PHONE (SABSE ZAROORI: Poore card ka text scan karo)
+                // Hum card ke andar ke sabhi spans ko check karte hain jisme number jaisa kuch ho
+                let phone = "N/A";
+                const cardText = container.innerText;
+                const phoneRegex = /(\+?\d{1,4}[- ]?)?\(?\d{3,4}\)?[- ]?\d{3,4}[- ]?\d{4}/g;
+                const matches = cardText.match(phoneRegex);
+                
+                if (matches) {
+                    // Filter: Numbers jo bahut chhote hain (jaise rating ya timing) unhe hatao
+                    const validPhone = matches.find(m => m.replace(/\D/g, '').length >= 10);
+                    phone = validPhone || "N/A";
                 }
+
+                leads.push({
+                    name: name.replace(/,/g, ""),
+                    rating: rating,
+                    website: website,
+                    phone: phone
+                });
             }
         });
 
-        // Sync data to storage so popup can see it
         chrome.storage.local.set({ leads: leads });
-
-    }, 2000); // 2 seconds delay to allow for loading
+    }, 2000);
 }
 
-// UI Update listener
+// Live Counter Update
 chrome.storage.onChanged.addListener((changes) => {
     if (changes.leads) {
         document.getElementById('count').innerText = changes.leads.newValue.length;
@@ -104,25 +94,21 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
-// CSV Download Logic
+// CSV Download
 document.getElementById('downloadBtn').addEventListener('click', async () => {
-    const data = await chrome.storage.local.get(['leads']);
-    if (!data.leads || data.leads.length === 0) return;
+    const res = await chrome.storage.local.get(['leads']);
+    if (!res.leads) return;
 
-    let csv = "\ufeff"; // BOM for Excel encoding
-    csv += "Business Name,Phone,Website,Rating,Reviews\n";
-    
-    data.leads.forEach(l => {
-        csv += `"${l.name}","${l.phone}","${l.website}","${l.rating}","${l.reviews}"\n`;
+    let csv = "Name,Rating,Phone,Website\n";
+    res.leads.forEach(l => {
+        csv += `"${l.name}","${l.rating}","${l.phone}","${l.website}"\n`;
     });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Leads_${new Date().getTime()}.csv`;
+    a.download = `GoogleMaps_Leads.csv`;
     a.click();
-    
-    // Optional: Clear storage after download
-    // chrome.storage.local.remove('leads');
+    chrome.storage.local.clear();
 });
