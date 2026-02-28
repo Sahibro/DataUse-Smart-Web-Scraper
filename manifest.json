@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Maps Lead Extractor Pro",
-  "version": "6.1",
+  "version": "7.0",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
   "action": {
