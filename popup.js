@@ -1,21 +1,23 @@
 let scraping = false;
 
-// Storage se purana data load karein
-chrome.storage.local.get(['leads'], (res) => {
+// UI update ke liye storage check
+async function refreshCount() {
+    const res = await chrome.storage.local.get(['leads']);
     if (res.leads) {
         document.getElementById('count').innerText = res.leads.length;
         document.getElementById('downloadBtn').style.display = 'block';
     }
-});
+}
+refreshCount();
 
 document.getElementById('startBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab.url.includes("google.com/maps")) {
-        alert("Pehle Google Maps par search results kholiye!");
+        alert("Pehle Google Maps search results kholiye!");
         return;
     }
-    document.getElementById('startBtn').innerText = "SCRAPING (CLICK MODE)...";
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: startDeepScraping });
+    document.getElementById('startBtn').innerText = "SCRAPING...";
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: startSmartScraping });
 });
 
 document.getElementById('stopBtn').addEventListener('click', async () => {
@@ -24,83 +26,86 @@ document.getElementById('stopBtn').addEventListener('click', async () => {
     document.getElementById('startBtn').innerText = "START SCRAPING";
 });
 
-// --- YE FUNCTION BROWSER KE ANDAR CHALEGA ---
-async function startDeepScraping() {
+// --- MAIN FUNCTION (Browser Context) ---
+async function startSmartScraping() {
     window.stopExtraction = false;
-    let leads = [];
-    const processedNames = new Set();
+    const storage = await chrome.storage.local.get(['leads']);
+    let leads = storage.leads || [];
+    let processedNames = new Set(leads.map(l => l.name));
 
     const scrollContainer = document.querySelector('div[role="feed"]');
 
     while (!window.stopExtraction) {
-        // 1. Saare visible cards dhoondho
         const cards = document.querySelectorAll('a[href*="/maps/place/"]');
         
         for (let card of cards) {
             if (window.stopExtraction) break;
 
-            const name = card.getAttribute('aria-label');
-            if (!name || processedNames.has(name)) continue;
+            const cardName = card.getAttribute('aria-label');
+            if (!cardName || processedNames.has(cardName)) continue;
 
-            // 2. Card par click karo taki detail panel khule
+            // 1. Click karo shop par
             card.click();
             
-            // 3. Wait karein (Detail panel load hone ke liye)
-            await new Promise(r => setTimeout(r, 2000));
-
-            // 4. Detail Panel se data uthao (Right side window)
-            const detailPanel = document.body; // Poora body scan karein detail ke liye
-            
-            // --- WEBSITE ---
-            const webEl = detailPanel.querySelector('a[aria-label*="website"], a[aria-label*="Website"]');
-            const website = webEl ? webEl.href : "N/A";
-
-            // --- PHONE ---
-            // Google Maps phone ko aria-label="Phone: [number]" mein rakhta hai
-            const phoneEl = detailPanel.querySelector('button[aria-label*="Phone:"], a[aria-label*="Phone:"]');
-            let phone = "N/A";
-            if (phoneEl) {
-                phone = phoneEl.getAttribute('aria-label').replace('Phone: ', '').trim();
-            } else {
-                // Agar button nahi mila toh text scan karo
-                const phoneRegex = /(\+?\d{1,4}[- ]?)?\(?\d{3,4}\)?[- ]?\d{3,4}[- ]?\d{4}/g;
-                const matches = detailPanel.innerText.match(phoneRegex);
-                if (matches) phone = matches[0];
+            // 2. WAIT LOGIC: Tab tak wait karo jab tak detail panel mein sahi naam na aa jaye
+            let isPanelReady = false;
+            for (let i = 0; i < 15; i++) { // Max 3 seconds wait
+                const panelTitle = document.querySelector('h1.fontHeadlineLarge')?.innerText;
+                if (panelTitle === cardName) {
+                    isPanelReady = true;
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 200)); 
             }
 
-            // --- RATING ---
-            const ratingEl = detailPanel.querySelector('div.F7nice span span[aria-hidden="true"]');
+            if (!isPanelReady) continue; // Agar panel update nahi hua toh skip karein
+
+            // 3. AB DATA UTHAO (Panel ab sahi shop ka hai)
+            const detailPanel = document.body;
+
+            // Website dhoondhne ka sabse satik tarika
+            const webEl = document.querySelector('a[data-item-id="authority"]');
+            const website = webEl ? webEl.href : "N/A";
+
+            // Phone dhoondhne ka sabse satik tarika
+            const phoneEl = document.querySelector('button[data-item-id^="phone:tel:"]');
+            let phone = "N/A";
+            if (phoneEl) {
+                phone = phoneEl.getAttribute('data-item-id').replace('phone:tel:', '');
+            } else {
+                // Alternative phone check
+                const phoneMatch = detailPanel.innerText.match(/(\+?\d{1,4}[- ]?)?\(?\d{3,4}\)?[- ]?\d{3,4}[- ]?\d{4}/g);
+                phone = phoneMatch ? phoneMatch[0] : "N/A";
+            }
+
+            // Rating
+            const ratingEl = document.querySelector('div.F7nice span span[aria-hidden="true"]');
             const rating = ratingEl ? ratingEl.innerText : "N/A";
 
-            // 5. List mein add karein
+            // 4. Save Leads
             leads.push({
-                name: name.replace(/,/g, ""),
+                name: cardName.replace(/,/g, ""),
                 phone: phone,
                 website: website,
                 rating: rating
             });
 
-            processedNames.add(name);
-
-            // Storage update karein taki popup dekh sake
-            chrome.storage.local.set({ leads: leads });
-
-            // 6. Scroll into view next items
+            processedNames.add(cardName);
+            await chrome.storage.local.set({ leads: leads });
+            
             card.scrollIntoView();
         }
 
-        // 7. Thoda aur scroll karein naye results ke liye
+        // Scroll for more
         if (scrollContainer) {
             scrollContainer.scrollBy(0, 500);
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 2000));
         }
-
-        // Agar aur naye cards nahi mil rahe toh break
         if (cards.length === 0) break;
     }
 }
 
-// Counter update
+// Storage Listener
 chrome.storage.onChanged.addListener((changes) => {
     if (changes.leads) {
         document.getElementById('count').innerText = changes.leads.newValue.length;
@@ -108,10 +113,10 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
-// CSV Download Logic
+// CSV Download
 document.getElementById('downloadBtn').addEventListener('click', async () => {
     const res = await chrome.storage.local.get(['leads']);
-    if (!res.leads) return;
+    if (!res.leads || res.leads.length === 0) return;
 
     let csv = "Business Name,Phone,Website,Rating\n";
     res.leads.forEach(l => {
@@ -122,7 +127,7 @@ document.getElementById('downloadBtn').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `GoogleMaps_Deep_Leads.csv`;
+    a.download = `Satik_Leads_${new Date().getTime()}.csv`;
     a.click();
     chrome.storage.local.clear();
 });
