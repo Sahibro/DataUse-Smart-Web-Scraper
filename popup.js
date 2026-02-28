@@ -1,111 +1,94 @@
-let scraping = false;
-
-// UI update ke liye storage check
-async function refreshCount() {
-    const res = await chrome.storage.local.get(['leads']);
-    if (res.leads) {
+// UI Load setup
+chrome.storage.local.get(['leads'], (res) => {
+    if (res.leads && res.leads.length > 0) {
         document.getElementById('count').innerText = res.leads.length;
         document.getElementById('downloadBtn').style.display = 'block';
     }
-}
-refreshCount();
+});
 
 document.getElementById('startBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab.url.includes("google.com/maps")) {
-        alert("Pehle Google Maps search results kholiye!");
+        alert("Pehle Google Maps par results search karein!");
         return;
     }
-    document.getElementById('startBtn').innerText = "SCRAPING...";
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: startSmartScraping });
+    document.getElementById('startBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display = 'block';
+    document.getElementById('statusText').innerText = "Scraping... Please wait";
+    
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: runScraper });
 });
 
 document.getElementById('stopBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { window.stopExtraction = true; } });
-    document.getElementById('startBtn').innerText = "START SCRAPING";
+    
+    document.getElementById('startBtn').style.display = 'block';
+    document.getElementById('stopBtn').style.display = 'none';
+    document.getElementById('statusText').innerText = "Stopped";
 });
 
-// --- MAIN FUNCTION (Browser Context) ---
-async function startSmartScraping() {
+// --- THIS RUNS IN THE TAB ---
+async function runScraper() {
     window.stopExtraction = false;
-    const storage = await chrome.storage.local.get(['leads']);
-    let leads = storage.leads || [];
-    let processedNames = new Set(leads.map(l => l.name));
+    let leads = [];
+    const processed = new Set();
 
-    const scrollContainer = document.querySelector('div[role="feed"]');
+    // Load existing
+    const store = await chrome.storage.local.get(['leads']);
+    if (store.leads) {
+        leads = store.leads;
+        leads.forEach(l => processed.add(l.name));
+    }
+
+    const scrollDiv = document.querySelector('div[role="feed"]') || window;
 
     while (!window.stopExtraction) {
-        const cards = document.querySelectorAll('a[href*="/maps/place/"]');
+        const items = document.querySelectorAll('a[href*="/maps/place/"]');
         
-        for (let card of cards) {
+        for (let item of items) {
             if (window.stopExtraction) break;
 
-            const cardName = card.getAttribute('aria-label');
-            if (!cardName || processedNames.has(cardName)) continue;
+            const name = item.getAttribute('aria-label');
+            if (!name || processed.has(name)) continue;
 
-            // 1. Click karo shop par
-            card.click();
-            
-            // 2. WAIT LOGIC: Tab tak wait karo jab tak detail panel mein sahi naam na aa jaye
-            let isPanelReady = false;
-            for (let i = 0; i < 15; i++) { // Max 3 seconds wait
-                const panelTitle = document.querySelector('h1.fontHeadlineLarge')?.innerText;
-                if (panelTitle === cardName) {
-                    isPanelReady = true;
-                    break;
-                }
-                await new Promise(r => setTimeout(r, 200)); 
-            }
+            // Deep Click
+            item.click();
+            await new Promise(r => setTimeout(r, 2500)); // Panel loading time
 
-            if (!isPanelReady) continue; // Agar panel update nahi hua toh skip karein
+            // Extract Data
+            const websiteEl = document.querySelector('a[data-item-id="authority"], a[aria-label*="website"]');
+            const phoneEl = document.querySelector('button[data-item-id^="phone:tel:"], a[data-item-id^="phone:tel:"]');
+            const ratingEl = document.querySelector('span[aria-label*="stars"]');
 
-            // 3. AB DATA UTHAO (Panel ab sahi shop ka hai)
-            const detailPanel = document.body;
+            const phone = phoneEl ? phoneEl.getAttribute('data-item-id').replace('phone:tel:', '') : "N/A";
+            const website = websiteEl ? websiteEl.href : "N/A";
+            const rating = ratingEl ? ratingEl.getAttribute('aria-label').split(' ')[0] : "N/A";
 
-            // Website dhoondhne ka sabse satik tarika
-            const webEl = document.querySelector('a[data-item-id="authority"]');
-            const website = webEl ? webEl.href : "N/A";
-
-            // Phone dhoondhne ka sabse satik tarika
-            const phoneEl = document.querySelector('button[data-item-id^="phone:tel:"]');
-            let phone = "N/A";
-            if (phoneEl) {
-                phone = phoneEl.getAttribute('data-item-id').replace('phone:tel:', '');
-            } else {
-                // Alternative phone check
-                const phoneMatch = detailPanel.innerText.match(/(\+?\d{1,4}[- ]?)?\(?\d{3,4}\)?[- ]?\d{3,4}[- ]?\d{4}/g);
-                phone = phoneMatch ? phoneMatch[0] : "N/A";
-            }
-
-            // Rating
-            const ratingEl = document.querySelector('div.F7nice span span[aria-hidden="true"]');
-            const rating = ratingEl ? ratingEl.innerText : "N/A";
-
-            // 4. Save Leads
             leads.push({
-                name: cardName.replace(/,/g, ""),
+                name: name.replace(/"/g, '""'),
                 phone: phone,
                 website: website,
                 rating: rating
             });
+            processed.add(name);
 
-            processedNames.add(cardName);
+            // Save immediately
             await chrome.storage.local.set({ leads: leads });
-            
-            card.scrollIntoView();
+            item.scrollIntoView();
         }
 
-        // Scroll for more
-        if (scrollContainer) {
-            scrollContainer.scrollBy(0, 500);
+        // Auto Scroll
+        if (scrollDiv) {
+            scrollDiv.scrollBy(0, 600);
             await new Promise(r => setTimeout(r, 2000));
         }
-        if (cards.length === 0) break;
+        
+        if (items.length === 0) break;
     }
 }
 
-// Storage Listener
+// Live UI Update
 chrome.storage.onChanged.addListener((changes) => {
     if (changes.leads) {
         document.getElementById('count').innerText = changes.leads.newValue.length;
@@ -113,21 +96,31 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
-// CSV Download
+// DOWNLOAD LOGIC (Satik Fix)
 document.getElementById('downloadBtn').addEventListener('click', async () => {
     const res = await chrome.storage.local.get(['leads']);
     if (!res.leads || res.leads.length === 0) return;
 
-    let csv = "Business Name,Phone,Website,Rating\n";
+    let csvContent = "\ufeff"; // BOM for Excel formatting
+    csvContent += "Business Name,Phone,Website,Rating\n";
+    
     res.leads.forEach(l => {
-        csv += `"${l.name}","${l.phone}","${l.website}","${l.rating}"\n`;
+        csvContent += `"${l.name}","${l.phone}","${l.website}","${l.rating}"\n`;
     });
 
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Satik_Leads_${new Date().getTime()}.csv`;
-    a.click();
-    chrome.storage.local.clear();
+    const link = document.createElement("a");
+    
+    link.href = url;
+    link.download = `Leads_${new Date().getTime()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    
+    setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }, 100);
+
+    // Optional: chrome.storage.local.clear(); // Download ke baad clear karna ho toh
 });
