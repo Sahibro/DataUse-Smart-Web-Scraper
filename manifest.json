@@ -1,11 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Maps Lead Extractor Pro",
-  "version": "3.1",
-  "description": "Extract leads with Phone, Website, and Ratings accurately.",
+  "name": "Maps Lead Pro",
+  "version": "5.0",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
-  "action": {
-    "default_popup": "popup.html"
-  }
+  "action": { "default_popup": "popup.html" }
 }
