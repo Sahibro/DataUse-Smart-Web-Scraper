@@ -1,5 +1,6 @@
 let scraping = false;
 
+// Storage se purana data load karein
 chrome.storage.local.get(['leads'], (res) => {
     if (res.leads) {
         document.getElementById('count').innerText = res.leads.length;
@@ -10,83 +11,96 @@ chrome.storage.local.get(['leads'], (res) => {
 document.getElementById('startBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab.url.includes("google.com/maps")) {
-        alert("Pehle Google Maps par kuch search karein!");
+        alert("Pehle Google Maps par search results kholiye!");
         return;
     }
-    document.getElementById('startBtn').innerText = "RUNNING...";
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: startMapsScraping });
+    document.getElementById('startBtn').innerText = "SCRAPING (CLICK MODE)...";
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: startDeepScraping });
 });
 
 document.getElementById('stopBtn').addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { window.stopScraping = true; } });
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { window.stopExtraction = true; } });
     document.getElementById('startBtn').innerText = "START SCRAPING";
 });
 
-// --- YE FUNCTION GOOGLE MAPS KE PAGE PAR CHALTA HAI ---
-function startMapsScraping() {
-    window.stopScraping = false;
+// --- YE FUNCTION BROWSER KE ANDAR CHALEGA ---
+async function startDeepScraping() {
+    window.stopExtraction = false;
     let leads = [];
+    const processedNames = new Set();
 
-    const scrollContainer = document.querySelector('div[role="feed"]') || window;
+    const scrollContainer = document.querySelector('div[role="feed"]');
 
-    const interval = setInterval(() => {
-        if (window.stopScraping) {
-            clearInterval(interval);
-            return;
+    while (!window.stopExtraction) {
+        // 1. Saare visible cards dhoondho
+        const cards = document.querySelectorAll('a[href*="/maps/place/"]');
+        
+        for (let card of cards) {
+            if (window.stopExtraction) break;
+
+            const name = card.getAttribute('aria-label');
+            if (!name || processedNames.has(name)) continue;
+
+            // 2. Card par click karo taki detail panel khule
+            card.click();
+            
+            // 3. Wait karein (Detail panel load hone ke liye)
+            await new Promise(r => setTimeout(r, 2000));
+
+            // 4. Detail Panel se data uthao (Right side window)
+            const detailPanel = document.body; // Poora body scan karein detail ke liye
+            
+            // --- WEBSITE ---
+            const webEl = detailPanel.querySelector('a[aria-label*="website"], a[aria-label*="Website"]');
+            const website = webEl ? webEl.href : "N/A";
+
+            // --- PHONE ---
+            // Google Maps phone ko aria-label="Phone: [number]" mein rakhta hai
+            const phoneEl = detailPanel.querySelector('button[aria-label*="Phone:"], a[aria-label*="Phone:"]');
+            let phone = "N/A";
+            if (phoneEl) {
+                phone = phoneEl.getAttribute('aria-label').replace('Phone: ', '').trim();
+            } else {
+                // Agar button nahi mila toh text scan karo
+                const phoneRegex = /(\+?\d{1,4}[- ]?)?\(?\d{3,4}\)?[- ]?\d{3,4}[- ]?\d{4}/g;
+                const matches = detailPanel.innerText.match(phoneRegex);
+                if (matches) phone = matches[0];
+            }
+
+            // --- RATING ---
+            const ratingEl = detailPanel.querySelector('div.F7nice span span[aria-hidden="true"]');
+            const rating = ratingEl ? ratingEl.innerText : "N/A";
+
+            // 5. List mein add karein
+            leads.push({
+                name: name.replace(/,/g, ""),
+                phone: phone,
+                website: website,
+                rating: rating
+            });
+
+            processedNames.add(name);
+
+            // Storage update karein taki popup dekh sake
+            chrome.storage.local.set({ leads: leads });
+
+            // 6. Scroll into view next items
+            card.scrollIntoView();
         }
 
-        scrollContainer.scrollBy(0, 700);
+        // 7. Thoda aur scroll karein naye results ke liye
+        if (scrollContainer) {
+            scrollContainer.scrollBy(0, 500);
+            await new Promise(r => setTimeout(r, 1500));
+        }
 
-        // Sabhi result cards ko dhoondhna (Google Maps uses role="article" or specific links)
-        const cards = document.querySelectorAll('div[role="article"], a[href*="/maps/place/"]');
-
-        cards.forEach(card => {
-            // Agar card 'a' tag hai toh uska parent container lo, varna card khud container hai
-            const container = card.tagName === 'A' ? card.closest('div[role="article"]') : card;
-            if (!container) return;
-
-            // 1. NAME (Har card mein 'fontHeadlineSmall' class abhi standard hai)
-            const nameEl = container.querySelector('.fontHeadlineSmall');
-            const name = nameEl ? nameEl.innerText : "";
-
-            if (name && !leads.find(l => l.name === name)) {
-                
-                // 2. RATING (Aria-label se nikalna sabse satik hai)
-                const ratingEl = container.querySelector('span[aria-label*="stars"]');
-                const rating = ratingEl ? ratingEl.getAttribute('aria-label').split(' ')[0] : "N/A";
-
-                // 3. WEBSITE (Aria-label="Website" wale link ko dhoondho)
-                const webEl = container.querySelector('a[aria-label*="Website"], a[aria-label*="website"]');
-                const website = webEl ? webEl.href : "N/A";
-
-                // 4. PHONE (SABSE ZAROORI: Poore card ka text scan karo)
-                // Hum card ke andar ke sabhi spans ko check karte hain jisme number jaisa kuch ho
-                let phone = "N/A";
-                const cardText = container.innerText;
-                const phoneRegex = /(\+?\d{1,4}[- ]?)?\(?\d{3,4}\)?[- ]?\d{3,4}[- ]?\d{4}/g;
-                const matches = cardText.match(phoneRegex);
-                
-                if (matches) {
-                    // Filter: Numbers jo bahut chhote hain (jaise rating ya timing) unhe hatao
-                    const validPhone = matches.find(m => m.replace(/\D/g, '').length >= 10);
-                    phone = validPhone || "N/A";
-                }
-
-                leads.push({
-                    name: name.replace(/,/g, ""),
-                    rating: rating,
-                    website: website,
-                    phone: phone
-                });
-            }
-        });
-
-        chrome.storage.local.set({ leads: leads });
-    }, 2000);
+        // Agar aur naye cards nahi mil rahe toh break
+        if (cards.length === 0) break;
+    }
 }
 
-// Live Counter Update
+// Counter update
 chrome.storage.onChanged.addListener((changes) => {
     if (changes.leads) {
         document.getElementById('count').innerText = changes.leads.newValue.length;
@@ -94,21 +108,21 @@ chrome.storage.onChanged.addListener((changes) => {
     }
 });
 
-// CSV Download
+// CSV Download Logic
 document.getElementById('downloadBtn').addEventListener('click', async () => {
     const res = await chrome.storage.local.get(['leads']);
     if (!res.leads) return;
 
-    let csv = "Name,Rating,Phone,Website\n";
+    let csv = "Business Name,Phone,Website,Rating\n";
     res.leads.forEach(l => {
-        csv += `"${l.name}","${l.rating}","${l.phone}","${l.website}"\n`;
+        csv += `"${l.name}","${l.phone}","${l.website}","${l.rating}"\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `GoogleMaps_Leads.csv`;
+    a.download = `GoogleMaps_Deep_Leads.csv`;
     a.click();
     chrome.storage.local.clear();
 });
